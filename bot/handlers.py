@@ -287,7 +287,7 @@ async def resume_exercise_callback(callback: types.CallbackQuery):
         await callback.message.answer("▶️ Продовжуємо вправу!")
     await callback.answer()
 
-@router.message(Command("progress"))
+@router.message(F.text == "📊 Прогрес")
 async def view_progress(message: types.Message):
     workouts = get_progress(message.from_user.id)
     if workouts:
