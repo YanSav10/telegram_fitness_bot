@@ -1,6 +1,6 @@
 import firebase_admin
 from firebase_admin import credentials, firestore
-from .config import FIREBASE_KEY_PATH
+from bot.config import FIREBASE_KEY_PATH
 from datetime import datetime
 from google.cloud.firestore_v1 import SERVER_TIMESTAMP, Query
 

@@ -6,14 +6,14 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from .services import (
+from bot.services import (
     save_user, save_workout_progress,
     get_user, check_achievements,
     get_all_users, get_progress
 )
-from .buttons import goal_buttons, control_buttons, resume_buttons
-from .workouts import workout_plans
-from .video_links import video_links
+from bot.buttons import goal_buttons, control_buttons, resume_buttons
+from bot.workouts import workout_plans
+from bot.video_links import video_links
 
 router = Router()
 

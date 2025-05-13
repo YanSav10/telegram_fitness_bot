@@ -1,10 +1,10 @@
 import asyncio
 import logging
 from aiogram import Bot, Dispatcher
-from .config import BOT_TOKEN
-from .handlers import router
+from bot.config import BOT_TOKEN
+from bot.handlers import router
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from .handlers import send_reminders
+from bot.handlers import send_reminders
 
 async def main():
     logging.basicConfig(level=logging.INFO)
