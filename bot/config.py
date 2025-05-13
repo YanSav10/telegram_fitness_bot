@@ -1,20 +1,17 @@
 import os
 import json
-from dotenv import load_dotenv
-from pathlib import Path
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-ENV_PATH = BASE_DIR / ".env"
-if ENV_PATH.exists():
-    load_dotenv(ENV_PATH)
-
-# Токен бота
+# Отримуємо токен бота
 BOT_TOKEN = os.getenv("BOT_TOKEN")
+if not BOT_TOKEN:
+    raise ValueError("❌ BOT_TOKEN не встановлено у змінних середовища.")
 
-# Отримуємо JSON-ключ як рядок зі змінної середовища
+# Отримуємо Firebase credentials як JSON-рядок
 firebase_json = os.getenv("FIREBASE_KEY_PATH")
+if not firebase_json:
+    raise ValueError("❌ FIREBASE_KEY_PATH не встановлено у змінних середовища.")
 
-if firebase_json:
-    FIREBASE_CREDENTIALS = json.loads(firebase_json)
-else:
-    raise ValueError("❌ Firebase credentials not found in FIREBASE_KEY_PATH")
+try:
+    FIREBASE_KEY_PATH = json.loads(firebase_json)
+except json.JSONDecodeError as e:
+    raise ValueError(f"❌ Не вдалося розпарсити FIREBASE_KEY_PATH як JSON: {e}")
