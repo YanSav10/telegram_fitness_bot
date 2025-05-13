@@ -3,19 +3,15 @@ from pathlib import Path
 from dotenv import load_dotenv
 import json
 
-# ====== Завантаження локальних змінних (.env) ======
 BASE_DIR = Path(__file__).resolve().parent.parent
 ENV_PATH = BASE_DIR / ".env"
 if ENV_PATH.exists():
     load_dotenv(ENV_PATH)
 
-# ====== Токен бота ======
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN") or os.getenv("BOT_TOKEN")
 
-# ====== Шлях до Firebase ключа ======
 FIREBASE_KEY_PATH = BASE_DIR / "firebase_key.json"
 
-# ====== Якщо працюємо на Render — зберегти JSON-змінну як файл ======
 firebase_json = os.getenv("FIREBASE_CREDENTIALS_JSON")
 
 if firebase_json:
