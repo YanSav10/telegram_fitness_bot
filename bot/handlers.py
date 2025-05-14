@@ -30,7 +30,7 @@ paused_workouts = {}
 def get_explanation_button(exercise_name: str):
     return InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(
-            text="🔍 Показати пояснення",
+            text="🔍 Пояснення",
             callback_data=f"explain:{exercise_name}"
         )
     ]])
