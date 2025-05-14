@@ -14,6 +14,7 @@ from bot.services import (
 from bot.buttons import goal_buttons, control_buttons, resume_buttons
 from bot.workouts import workout_plans
 from bot.video_links import video_links
+from aiogram.exceptions import TelegramBadRequest
 
 router = Router()
 
@@ -23,6 +24,8 @@ class Form(StatesGroup):
     weight = State()
     age = State()
     workout_choice = State()
+    duration = State()
+    rest = State()
     workout = State()
 
 paused_workouts = {}
@@ -137,65 +140,91 @@ async def process_workout_choice(message: types.Message, state: FSMContext):
 
     if selected_workout:
         await state.update_data(workout=selected_workout, user_id=message.from_user.id)
-        await message.answer(
-            f"{selected_workout}\n🔴 Старт для початку",
-            reply_markup=control_buttons
-        )
+        await message.answer("⏱ Введи *тривалість вправ* у секундах (від 5 до 120):", parse_mode="Markdown")
+        await state.set_state(Form.duration)
+    else:
+        await message.answer("❌ Такого тренування немає. Спробуй ще раз.")
+
+@router.message(Form.duration)
+async def set_custom_duration(message: types.Message, state: FSMContext):
+    if not message.text.isdigit():
+        await message.answer("🚫 Введи число від 5 до 120.")
+        return
+    duration = int(message.text)
+    if 5 <= duration <= 120:
+        await state.update_data(custom_duration=duration)
+        await message.answer("🔄 Тепер введи *тривалість відпочинку* у секундах (від 5 до 120):", parse_mode="Markdown")
+        await state.set_state(Form.rest)
+    else:
+        await message.answer("🚫 Число має бути від 5 до 120.")
+
+@router.message(Form.rest)
+async def set_custom_rest(message: types.Message, state: FSMContext):
+    if not message.text.isdigit():
+        await message.answer("🚫 Введи число від 5 до 120.")
+        return
+    rest = int(message.text)
+    if 5 <= rest <= 120:
+        await state.update_data(custom_rest=rest)
+        data = await state.get_data()
+        workout = data["workout"]
+        await message.answer(f"{workout}\n🔴 Натисни Старт для початку", reply_markup=control_buttons)
         await state.set_state(Form.workout)
     else:
-        await message.answer("❌ Такого тренування немає. Спробуйте ще раз.")
+        await message.answer("🚫 Число має бути від 5 до 120.")
 
 @router.message(Form.workout, F.text == "🔴 Старт")
 async def start_timer(message: types.Message, state: FSMContext):
     data = await state.get_data()
     workout = data["workout"]
     user_id = data["user_id"]
+    exercise_duration = data.get("custom_duration", 30)
+    rest_duration = data.get("custom_rest", 10)
 
-    exercises = re.findall(r"✅ (\d+) сек ([^\n]+)", workout)
+    exercises = re.findall(r"✅ \d+ сек ([^\n]+)", workout)
     total_duration = 0
-
     paused_workouts[user_id] = {"paused": False, "stopped": False}
 
-    for sec, exercise in exercises:
-        sec = int(sec)
+    for exercise in exercises:
         caption = f"🔹 <b>{exercise}</b>"
-        await message.answer(
-            caption,
-            parse_mode="HTML",
-            reply_markup=get_explanation_button(exercise)
-        )
+        await message.answer(caption, parse_mode="HTML", reply_markup=get_explanation_button(exercise))
+        timer_msg = await message.answer(f"⏱️ Залишилось: {exercise_duration} сек", parse_mode="HTML")
 
-        timer_msg = await message.answer(
-            f"⏱️ Залишилось: {sec} сек",
-            parse_mode="HTML"
-        )
-
-        for i in range(sec, 0, -1):
+        for i in range(exercise_duration, 0, -1):
             await asyncio.sleep(1)
-
             if paused_workouts[user_id]["stopped"]:
                 await message.answer("⛔ Тренування зупинено.", reply_markup=types.ReplyKeyboardRemove())
                 await state.clear()
                 paused_workouts.pop(user_id, None)
                 return
-
             while paused_workouts[user_id]["paused"]:
                 await asyncio.sleep(1)
-
             try:
-                await timer_msg.edit_text(
-                    f"⏱️ Залишилось: {i} сек",
-                    parse_mode="HTML"
-                )
-            except Exception as e:
-                print(f"⚠ Не вдалося оновити таймер: {e}")
+                await timer_msg.edit_text(f"⏱️ Залишилось: {i} сек", parse_mode="HTML")
+            except TelegramBadRequest:
+                pass
+        total_duration += exercise_duration
 
-        total_duration += sec
+        if exercise != exercises[-1]:
+            rest_msg = await message.answer("⏸️ Відпочинок...")
+            for i in range(rest_duration, 0, -1):
+                await asyncio.sleep(1)
+                if paused_workouts[user_id]["stopped"]:
+                    await message.answer("⛔ Тренування зупинено.", reply_markup=types.ReplyKeyboardRemove())
+                    await state.clear()
+                    paused_workouts.pop(user_id, None)
+                    return
+                while paused_workouts[user_id]["paused"]:
+                    await asyncio.sleep(1)
+                try:
+                    await rest_msg.edit_text(f"⏸️ Відпочинок {i} сек")
+                except TelegramBadRequest:
+                    pass
+            total_duration += rest_duration
 
     save_workout_progress(user_id, workout, total_duration)
     achievements = check_achievements(user_id)
-    achievement_text = "\n".join(
-        [f"🏅 *Досягнення!* {a}" for a in achievements]) if achievements else ""
+    achievement_text = "\n".join([f"🏅 *Досягнення!* {a}" for a in achievements]) if achievements else ""
     await message.answer(
         f"✅ Завершено: {total_duration // 60} хв {total_duration % 60} сек\n{achievement_text}",
         reply_markup=types.ReplyKeyboardRemove(),
