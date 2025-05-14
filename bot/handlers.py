@@ -150,68 +150,47 @@ async def start_timer(message: types.Message, state: FSMContext):
     data = await state.get_data()
     workout = data["workout"]
     user_id = data["user_id"]
-    exercises = re.findall(r"✅ (\d+) сек ([^\n]+) \(x(\d+)\)", workout)
+
+    exercises = re.findall(r"✅ (\d+) сек ([^\n]+)", workout)
     total_duration = 0
 
     paused_workouts[user_id] = {"paused": False, "stopped": False}
 
-    for sec, exercise, repeat in exercises:
-        sec, repeat = int(sec), int(repeat)
-        for r in range(repeat):
-            caption = f"🔹 <b>{exercise}</b> — підхід {r + 1}/{repeat}"
-            await message.answer(
-                caption,
-                parse_mode="HTML",
-                reply_markup=get_explanation_button(exercise)
-            )
+    for sec, exercise in exercises:
+        sec = int(sec)
+        caption = f"🔹 <b>{exercise}</b>"
+        await message.answer(
+            caption,
+            parse_mode="HTML",
+            reply_markup=get_explanation_button(exercise)
+        )
 
-            # 2. Вивід окремого повідомлення для таймера
-            timer_msg = await message.answer(
-                f"⏱️ Залишилось: {sec} сек",
-                parse_mode="HTML"
-            )
+        timer_msg = await message.answer(
+            f"⏱️ Залишилось: {sec} сек",
+            parse_mode="HTML"
+        )
 
-            for i in range(sec, 0, -1):
+        for i in range(sec, 0, -1):
+            await asyncio.sleep(1)
+
+            if paused_workouts[user_id]["stopped"]:
+                await message.answer("⛔ Тренування зупинено.", reply_markup=types.ReplyKeyboardRemove())
+                await state.clear()
+                paused_workouts.pop(user_id, None)
+                return
+
+            while paused_workouts[user_id]["paused"]:
                 await asyncio.sleep(1)
 
-                if paused_workouts[user_id]["stopped"]:
-                    await message.answer("⛔ Тренування зупинено.", reply_markup=types.ReplyKeyboardRemove())
-                    await state.clear()
-                    paused_workouts.pop(user_id, None)
-                    return
+            try:
+                await timer_msg.edit_text(
+                    f"⏱️ Залишилось: {i} сек",
+                    parse_mode="HTML"
+                )
+            except Exception as e:
+                print(f"⚠ Не вдалося оновити таймер: {e}")
 
-                while paused_workouts[user_id]["paused"]:
-                    await asyncio.sleep(1)
-
-                try:
-                    await timer_msg.edit_text(
-                        f"⏱️ Залишилось: {i} сек",
-                        parse_mode="HTML"
-                    )
-                except Exception as e:
-                    print(f"⚠ Не вдалося оновити таймер: {e}")
-
-            total_duration += sec
-
-            if r < repeat - 1:
-                rest_msg = await message.answer("⏸️ Відпочинок 10 сек")
-                for i in range(10, 0, -1):
-                    await asyncio.sleep(1)
-
-                    if paused_workouts[user_id]["stopped"]:
-                        await message.answer("⛔ Тренування зупинено.", reply_markup=types.ReplyKeyboardRemove())
-                        await state.clear()
-                        paused_workouts.pop(user_id, None)
-                        return
-
-                    while paused_workouts[user_id]["paused"]:
-                        await asyncio.sleep(1)
-
-                    try:
-                        await rest_msg.edit_text(f"⏸️ Відпочинок {i} сек")
-                    except Exception as e:
-                        print(f"⚠ Не вдалося оновити відпочинок: {e}")
-                total_duration += 10
+        total_duration += sec
 
     save_workout_progress(user_id, workout, total_duration)
     achievements = check_achievements(user_id)
