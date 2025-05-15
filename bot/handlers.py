@@ -199,7 +199,10 @@ async def start_timer(message: types.Message, state: FSMContext):
         await message.answer(caption, parse_mode="HTML", reply_markup=get_explanation_button(exercise))
 
         # Таймер вправи
-        remaining = paused_workouts[user_id].get("remaining_time", exercise_duration)
+        if paused_workouts[user_id]["remaining_time"] > 0:
+            remaining = paused_workouts[user_id]["remaining_time"]
+        else:
+            remaining = exercise_duration
         paused_workouts[user_id]["mode"] = "exercise"
         timer_msg = await message.answer(f"⏱️ Залишилось: {remaining} сек", parse_mode="HTML")
         paused_workouts[user_id]["message_id"] = timer_msg.message_id
@@ -225,7 +228,10 @@ async def start_timer(message: types.Message, state: FSMContext):
 
         # Відпочинок між вправами (окрім останньої)
         if exercise != exercises[-1]:
-            remaining_rest = paused_workouts[user_id].get("remaining_rest", rest_duration)
+            if paused_workouts[user_id]["remaining_rest"] > 0:
+                remaining_rest = paused_workouts[user_id]["remaining_rest"]
+            else:
+                remaining_rest = rest_duration
             paused_workouts[user_id]["mode"] = "rest"
             rest_msg = await message.answer(f"⏸️ Відпочинок {remaining_rest} сек", parse_mode="HTML")
             paused_workouts[user_id]["message_id"] = rest_msg.message_id
