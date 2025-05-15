@@ -389,6 +389,7 @@ async def resume_exercise_callback(callback: types.CallbackQuery):
         except TelegramBadRequest:
             pass
 
+        # Надсилаємо нове повідомлення таймера
         text = (
             f"⏱️ Залишилось: {remaining} сек" if mode == "exercise"
             else f"⏸️ Відпочинок {remaining} сек"
@@ -396,7 +397,7 @@ async def resume_exercise_callback(callback: types.CallbackQuery):
         msg = await callback.message.answer(text, parse_mode="HTML")
         paused_workouts[user_id]["message_id"] = msg.message_id
 
-        # Повідомлення для користувача
+        # Кнопки керування
         await callback.message.answer("▶️ Продовжуємо вправу!", reply_markup=control_buttons)
 
     await callback.answer()
