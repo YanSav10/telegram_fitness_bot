@@ -221,7 +221,6 @@ async def start_timer(message: types.Message, state: FSMContext):
         total_duration += exercise_duration
         paused_workouts[user_id]["remaining_time"] = 0
 
-        # Відпочинок
         if idx < len(exercises) - 1:
             rest = paused_workouts[user_id]["remaining_rest"] or rest_duration
             paused_workouts[user_id].update({"mode": "rest"})
@@ -346,9 +345,17 @@ async def explain_exercise_callback(callback: types.CallbackQuery):
     exercise = callback.data.split("explain:")[1]
     video_url = video_links.get(exercise)
 
-    # Ставимо паузу
     if user_id in paused_workouts:
         paused_workouts[user_id]["paused"] = True
+        try:
+            msg_id = paused_workouts[user_id].get("message_id")
+            if msg_id:
+                await callback.message.bot.delete_message(
+                    chat_id=callback.message.chat.id,
+                    message_id=msg_id
+                )
+        except TelegramBadRequest:
+            pass
 
     if video_url:
         await callback.message.answer(
@@ -373,23 +380,10 @@ async def resume_exercise_callback(callback: types.CallbackQuery):
         paused_workouts[user_id]["paused"] = False
         mode = paused_workouts[user_id].get("mode")
 
-        # Визначаємо залишок часу
         remaining = paused_workouts[user_id].get(
             "remaining_time" if mode == "exercise" else "remaining_rest", 0
         )
 
-        # Видаляємо старе повідомлення таймера (якщо існує)
-        try:
-            msg_id = paused_workouts[user_id].get("message_id")
-            if msg_id:
-                await callback.message.bot.delete_message(
-                    chat_id=callback.message.chat.id,
-                    message_id=msg_id
-                )
-        except TelegramBadRequest:
-            pass
-
-        # Надсилаємо нове повідомлення таймера
         text = (
             f"⏱️ Залишилось: {remaining} сек" if mode == "exercise"
             else f"⏸️ Відпочинок {remaining} сек"
@@ -397,9 +391,7 @@ async def resume_exercise_callback(callback: types.CallbackQuery):
         msg = await callback.message.answer(text, parse_mode="HTML")
         paused_workouts[user_id]["message_id"] = msg.message_id
 
-        # Кнопки керування
         await callback.message.answer("▶️ Продовжуємо вправу!", reply_markup=control_buttons)
-
     await callback.answer()
 
 @router.message(F.text == "📊 Прогрес")
