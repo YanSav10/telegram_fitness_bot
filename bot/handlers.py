@@ -369,40 +369,36 @@ async def explain_exercise_callback(callback: types.CallbackQuery):
 @router.callback_query(F.data == "resume_exercise")
 async def resume_exercise_callback(callback: types.CallbackQuery):
     user_id = callback.from_user.id
-    if user_id not in paused_workouts:
-        await callback.answer()
-        return
+    if user_id in paused_workouts:
+        paused_workouts[user_id]["paused"] = False
+        mode = paused_workouts[user_id].get("mode")
 
-    # Знімаємо паузу
-    paused_workouts[user_id]["paused"] = False
+        # Визначаємо залишок часу
+        remaining = paused_workouts[user_id].get(
+            "remaining_time" if mode == "exercise" else "remaining_rest", 0
+        )
 
-    mode = paused_workouts[user_id].get("mode")
-    remaining = paused_workouts[user_id].get(
-        "remaining_time" if mode == "exercise" else "remaining_rest", 0
-    )
-
-    # Видаляємо старе повідомлення таймера
-    old_msg_id = paused_workouts[user_id].get("message_id")
-    if old_msg_id:
+        # Видаляємо старе повідомлення таймера (якщо існує)
         try:
-            await callback.message.bot.delete_message(
-                chat_id=callback.message.chat.id,
-                message_id=old_msg_id
-            )
+            msg_id = paused_workouts[user_id].get("message_id")
+            if msg_id:
+                await callback.message.bot.delete_message(
+                    chat_id=callback.message.chat.id,
+                    message_id=msg_id
+                )
         except TelegramBadRequest:
             pass
 
-    # Виводимо нове одне повідомлення з часом
-    text = (
-        f"⏱️ Залишилось: {remaining} сек"
-        if mode == "exercise"
-        else f"⏸️ Відпочинок {remaining} сек"
-    )
-    new_msg = await callback.message.answer(text, parse_mode="HTML")
-    paused_workouts[user_id]["message_id"] = new_msg.message_id
+        text = (
+            f"⏱️ Залишилось: {remaining} сек" if mode == "exercise"
+            else f"⏸️ Відпочинок {remaining} сек"
+        )
+        msg = await callback.message.answer(text, parse_mode="HTML")
+        paused_workouts[user_id]["message_id"] = msg.message_id
 
-    # Просто надсилаємо підтвердження
-    await callback.message.answer("▶️ Продовжуємо вправу!")
+        # Повідомлення для користувача
+        await callback.message.answer("▶️ Продовжуємо вправу!", reply_markup=control_buttons)
+
     await callback.answer()
 
 @router.message(F.text == "📊 Прогрес")
