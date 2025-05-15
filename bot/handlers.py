@@ -272,38 +272,73 @@ async def pause_workout(message: types.Message):
     user_id = message.from_user.id
     if user_id in paused_workouts:
         paused_workouts[user_id]["paused"] = True
-        await message.answer("⏸️ Тренування на паузі. Натисни ▶️ Продовжити для продовження.",
-                             reply_markup=resume_buttons)
-        msg_id = paused_workouts[user_id].get("message_id")
-        if msg_id:
-            try:
-                await message.bot.delete_message(chat_id=message.chat.id, message_id=msg_id)
-            except TelegramBadRequest:
-                pass
+        await message.answer(
+            "⏸️ Тренування на паузі. Натисни ▶️ Продовжити для продовження.",
+            reply_markup=resume_buttons
+        )
+        try:
+            await message.bot.delete_message(
+                chat_id=message.chat.id,
+                message_id=paused_workouts[user_id]["message_id"]
+            )
+        except TelegramBadRequest:
+            pass
     else:
         await message.answer("⚠ Тренування зараз неактивне.")
 
 @router.message(Form.workout, F.text == "▶️ Продовжити")
 async def resume_workout(message: types.Message):
     user_id = message.from_user.id
-    if user_id in paused_workouts and paused_workouts[user_id]["paused"]:
-        paused_workouts[user_id]["paused"] = False
-        mode = paused_workouts[user_id].get("mode")
-        remaining = (
-            paused_workouts[user_id].get("remaining_time") if mode == "exercise"
-            else paused_workouts[user_id].get("remaining_rest", 0)
-        )
-        if remaining > 0:
-            text = (
-                f"⏱️ Залишилось: {remaining} сек" if mode == "exercise"
-                else f"⏸️ Відпочинок {remaining} сек"
-            )
-            msg = await message.answer(text, parse_mode="HTML")
-            paused_workouts[user_id]["message_id"] = msg.message_id
-
-        await message.answer("▶️ Продовжуємо тренування!", reply_markup=control_buttons)
-    else:
+    if user_id not in paused_workouts or not paused_workouts[user_id]["paused"]:
         await message.answer("⚠ Тренування зараз не на паузі.")
+        return
+
+    paused_workouts[user_id]["paused"] = False
+    mode = paused_workouts[user_id].get("mode")
+    remaining = paused_workouts[user_id].get(
+        "remaining_time" if mode == "exercise" else "remaining_rest", 0
+    )
+
+    if remaining > 0:
+        text = (
+            f"⏱️ Залишилось: {remaining} сек"
+            if mode == "exercise"
+            else f"⏸️ Відпочинок {remaining} сек"
+        )
+        timer_msg = await message.answer(text, parse_mode="HTML")
+        paused_workouts[user_id]["message_id"] = timer_msg.message_id
+
+        # 🔁 Динамічне оновлення
+        while remaining > 0:
+            await asyncio.sleep(1)
+            if paused_workouts[user_id]["paused"]:
+                if mode == "exercise":
+                    paused_workouts[user_id]["remaining_time"] = remaining
+                else:
+                    paused_workouts[user_id]["remaining_rest"] = remaining
+                return
+            if paused_workouts[user_id]["stopped"]:
+                await message.answer("⛔ Тренування зупинено.", reply_markup=types.ReplyKeyboardRemove())
+                paused_workouts.pop(user_id, None)
+                return
+            remaining -= 1
+            try:
+                await timer_msg.edit_text(
+                    f"⏱️ Залишилось: {remaining} сек"
+                    if mode == "exercise"
+                    else f"⏸️ Відпочинок {remaining} сек",
+                    parse_mode="HTML"
+                )
+            except TelegramBadRequest:
+                pass
+
+        # Очищення лічильника
+        if mode == "exercise":
+            paused_workouts[user_id]["remaining_time"] = 0
+        else:
+            paused_workouts[user_id]["remaining_rest"] = 0
+
+    await message.answer("▶️ Продовжуємо тренування!", reply_markup=control_buttons)
 
 @router.callback_query(F.data.startswith("explain:"))
 async def explain_exercise_callback(callback: types.CallbackQuery):
