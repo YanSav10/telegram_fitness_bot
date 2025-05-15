@@ -204,14 +204,23 @@ async def start_timer(message: types.Message, state: FSMContext):
 
         while remaining > 0:
             await asyncio.sleep(1)
+
             if paused_workouts[user_id]["stopped"]:
                 await message.answer("⛔ Тренування зупинено.", reply_markup=types.ReplyKeyboardRemove())
                 await state.clear()
                 paused_workouts.pop(user_id, None)
                 return
+
             if paused_workouts[user_id]["paused"]:
                 paused_workouts[user_id]["remaining_time"] = remaining
                 continue
+
+            # Додано: якщо повідомлення було видалено, створити нове
+            if paused_workouts[user_id]["message_id"] is None:
+                new_msg = await message.answer(f"⏱️ Залишилось: {remaining} сек", parse_mode="HTML")
+                paused_workouts[user_id]["message_id"] = new_msg.message_id
+                timer_msg = new_msg  # оновити локальну змінну
+
             remaining -= 1
             try:
                 await timer_msg.edit_text(f"⏱️ Залишилось: {remaining} сек", parse_mode="HTML")
@@ -229,14 +238,23 @@ async def start_timer(message: types.Message, state: FSMContext):
 
             while rest > 0:
                 await asyncio.sleep(1)
+
                 if paused_workouts[user_id]["stopped"]:
                     await message.answer("⛔ Тренування зупинено.", reply_markup=types.ReplyKeyboardRemove())
                     await state.clear()
                     paused_workouts.pop(user_id, None)
                     return
+
                 if paused_workouts[user_id]["paused"]:
                     paused_workouts[user_id]["remaining_rest"] = rest
                     continue
+
+                # Додано: якщо повідомлення було видалено, створити нове
+                if paused_workouts[user_id]["message_id"] is None:
+                    new_msg = await message.answer(f"⏸️ Відпочинок {rest} сек", parse_mode="HTML")
+                    paused_workouts[user_id]["message_id"] = new_msg.message_id
+                    rest_msg = new_msg  # оновити локальну змінну
+
                 rest -= 1
                 try:
                     await rest_msg.edit_text(f"⏸️ Відпочинок {rest} сек")
