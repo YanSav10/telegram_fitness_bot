@@ -225,9 +225,8 @@ async def start_timer(message: types.Message, state: FSMContext):
         total_duration += exercise_duration
 
         if exercise != exercises[-1]:
-            remaining = rest_duration
-            paused_workouts[user_id]["mode"] = "rest"
-            rest_msg = await message.answer("⏸️ Відпочинок...")
+            remaining = paused_workouts[user_id].get("remaining_rest", rest_duration)
+            rest_msg = await message.answer(f"⏸️ Відпочинок {remaining} сек")
             paused_workouts[user_id]["message_id"] = rest_msg.message_id
 
             while remaining > 0:
@@ -238,14 +237,15 @@ async def start_timer(message: types.Message, state: FSMContext):
                     paused_workouts.pop(user_id, None)
                     return
                 if paused_workouts[user_id]["paused"]:
-                    paused_workouts[user_id]["rest_remaining"] = remaining
+                    paused_workouts[user_id]["remaining_rest"] = remaining
                     continue
                 remaining -= 1
                 try:
                     await rest_msg.edit_text(f"⏸️ Відпочинок {remaining} сек")
                 except TelegramBadRequest:
                     pass
-            total_duration += rest_duration
+
+            paused_workouts[user_id]["remaining_rest"] = 0
 
     save_workout_progress(user_id, workout, total_duration)
     achievements = check_achievements(user_id)
