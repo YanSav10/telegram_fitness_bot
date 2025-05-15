@@ -378,6 +378,17 @@ async def resume_exercise_callback(callback: types.CallbackQuery):
             else paused_workouts[user_id].get("remaining_rest", 0)
         )
 
+        # 🧹 Видаляємо попередній таймер, якщо існує
+        old_msg_id = paused_workouts[user_id].get("message_id")
+        if old_msg_id:
+            try:
+                await callback.message.bot.delete_message(
+                    chat_id=callback.message.chat.id,
+                    message_id=old_msg_id
+                )
+            except TelegramBadRequest:
+                pass
+
         if remaining > 0:
             text = (
                 f"⏱️ Залишилось: {remaining} сек" if mode == "exercise"
@@ -388,7 +399,7 @@ async def resume_exercise_callback(callback: types.CallbackQuery):
 
             await callback.message.answer("▶️ Продовжуємо вправу!")
 
-            # 🔁 Цикл відновлення таймера
+            # 🔁 Цикл таймера
             while remaining > 0:
                 await asyncio.sleep(1)
                 if paused_workouts[user_id]["paused"]:
@@ -417,6 +428,7 @@ async def resume_exercise_callback(callback: types.CallbackQuery):
                 paused_workouts[user_id]["remaining_time"] = 0
             else:
                 paused_workouts[user_id]["remaining_rest"] = 0
+
     await callback.answer()
 
 @router.message(F.text == "📊 Прогрес")
