@@ -315,7 +315,46 @@ async def resume_workout(message: types.Message):
     except TelegramBadRequest:
         pass
 
+    # Після видалення старого повідомлення створюємо нове
+    mode = paused_workouts[user_id].get("mode")
+    remaining = paused_workouts[user_id].get("remaining_time" if mode == "exercise" else "remaining_rest", 0)
+
+    text = f"⏱️ Залишилось: {remaining} сек" if mode == "exercise" else f"⏸️ Відпочинок {remaining} сек"
+    timer_msg = await message.answer(text, parse_mode="HTML")
+    paused_workouts[user_id]["message_id"] = timer_msg.message_id
+
     await message.answer("▶️ Продовжуємо тренування!", reply_markup=control_buttons)
+
+    # 🔁 Динамічне оновлення
+    while remaining > 0:
+        await asyncio.sleep(1)
+
+        if paused_workouts[user_id]["paused"]:
+            if mode == "exercise":
+                paused_workouts[user_id]["remaining_time"] = remaining
+            else:
+                paused_workouts[user_id]["remaining_rest"] = remaining
+            return
+
+        if paused_workouts[user_id]["stopped"]:
+            await message.answer("⛔ Тренування зупинено.", reply_markup=types.ReplyKeyboardRemove())
+            paused_workouts.pop(user_id, None)
+            return
+
+        remaining -= 1
+        try:
+            await timer_msg.edit_text(
+                f"⏱️ Залишилось: {remaining} сек" if mode == "exercise" else f"⏸️ Відпочинок {remaining} сек",
+                parse_mode="HTML"
+            )
+        except TelegramBadRequest:
+            pass
+
+    # Скидання лічильника
+    if mode == "exercise":
+        paused_workouts[user_id]["remaining_time"] = 0
+    else:
+        paused_workouts[user_id]["remaining_rest"] = 0
 
 @router.callback_query(F.data.startswith("explain:"))
 async def explain_exercise_callback(callback: types.CallbackQuery):
@@ -354,23 +393,59 @@ async def explain_exercise_callback(callback: types.CallbackQuery):
 @router.callback_query(F.data == "resume_exercise")
 async def resume_exercise_callback(callback: types.CallbackQuery):
     user_id = callback.from_user.id
-    if user_id in paused_workouts:
-        paused_workouts[user_id]["paused"] = False
-        paused_workouts[user_id]["resume_requested"] = True
+    if user_id not in paused_workouts:
+        await callback.answer("⚠ Тренування не знайдено.")
+        return
 
+    paused_workouts[user_id]["paused"] = False
+    paused_workouts[user_id]["resume_requested"] = True
+
+    try:
+        msg_id = paused_workouts[user_id].get("message_id")
+        if msg_id:
+            await callback.message.bot.delete_message(chat_id=callback.message.chat.id, message_id=msg_id)
+    except TelegramBadRequest:
+        pass
+
+    mode = paused_workouts[user_id].get("mode")
+    remaining = paused_workouts[user_id].get("remaining_time" if mode == "exercise" else "remaining_rest", 0)
+
+    text = f"⏱️ Залишилось: {remaining} сек" if mode == "exercise" else f"⏸️ Відпочинок {remaining} сек"
+    timer_msg = await callback.message.answer(text, parse_mode="HTML")
+    paused_workouts[user_id]["message_id"] = timer_msg.message_id
+
+    await callback.message.answer("▶️ Продовжуємо вправу!", reply_markup=control_buttons)
+    await callback.answer()
+
+    # 🔁 Динамічне оновлення
+    while remaining > 0:
+        await asyncio.sleep(1)
+
+        if paused_workouts[user_id]["paused"]:
+            if mode == "exercise":
+                paused_workouts[user_id]["remaining_time"] = remaining
+            else:
+                paused_workouts[user_id]["remaining_rest"] = remaining
+            return
+
+        if paused_workouts[user_id]["stopped"]:
+            await callback.message.answer("⛔ Тренування зупинено.", reply_markup=types.ReplyKeyboardRemove())
+            paused_workouts.pop(user_id, None)
+            return
+
+        remaining -= 1
         try:
-            msg_id = paused_workouts[user_id].get("message_id")
-            if msg_id:
-                await callback.message.bot.delete_message(
-                    chat_id=callback.message.chat.id,
-                    message_id=msg_id
-                )
+            await timer_msg.edit_text(
+                f"⏱️ Залишилось: {remaining} сек" if mode == "exercise" else f"⏸️ Відпочинок {remaining} сек",
+                parse_mode="HTML"
+            )
         except TelegramBadRequest:
             pass
 
-        await callback.message.answer("▶️ Продовжуємо вправу!", reply_markup=control_buttons)
-
-    await callback.answer()
+    if mode == "exercise":
+        paused_workouts[user_id]["remaining_time"] = 0
+    else:
+        paused_workouts[user_id]["remaining_rest"] = 0
 
 @router.message(F.text == "📊 Прогрес")
 async def view_progress(message: types.Message):
