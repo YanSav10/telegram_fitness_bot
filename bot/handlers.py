@@ -183,21 +183,24 @@ async def start_timer(message: types.Message, state: FSMContext):
 
     exercises = re.findall(r"✅ \d+ сек ([^\n]+)", workout)
     total_duration = 0
+
     paused_workouts[user_id] = {
         "paused": False,
         "stopped": False,
         "remaining_time": 0,
-        "rest_remaining": 0,
-        "message_id": None,
-        "mode": "exercise"
+        "remaining_rest": 0,
+        "mode": None,
+        "message_id": None
     }
 
     for exercise in exercises:
+        # Вивід назви вправи з кнопкою пояснення
         caption = f"🔹 <b>{exercise}</b>"
         await message.answer(caption, parse_mode="HTML", reply_markup=get_explanation_button(exercise))
-        remaining = exercise_duration
-        paused_workouts[user_id]["mode"] = "exercise"
 
+        # Таймер вправи
+        remaining = paused_workouts[user_id].get("remaining_time", exercise_duration)
+        paused_workouts[user_id]["mode"] = "exercise"
         timer_msg = await message.answer(f"⏱️ Залишилось: {remaining} сек", parse_mode="HTML")
         paused_workouts[user_id]["message_id"] = timer_msg.message_id
 
@@ -213,23 +216,21 @@ async def start_timer(message: types.Message, state: FSMContext):
                 continue
             remaining -= 1
             try:
-                await message.bot.edit_message_text(
-                    f"⏱️ Залишилось: {remaining} сек",
-                    chat_id=message.chat.id,
-                    message_id=paused_workouts[user_id]["message_id"],
-                    parse_mode="HTML"
-                )
+                await timer_msg.edit_text(f"⏱️ Залишилось: {remaining} сек", parse_mode="HTML")
             except TelegramBadRequest:
                 pass
 
         total_duration += exercise_duration
+        paused_workouts[user_id]["remaining_time"] = 0
 
+        # Відпочинок між вправами (окрім останньої)
         if exercise != exercises[-1]:
-            remaining = paused_workouts[user_id].get("remaining_rest", rest_duration)
-            rest_msg = await message.answer(f"⏸️ Відпочинок {remaining} сек")
+            remaining_rest = paused_workouts[user_id].get("remaining_rest", rest_duration)
+            paused_workouts[user_id]["mode"] = "rest"
+            rest_msg = await message.answer(f"⏸️ Відпочинок {remaining_rest} сек", parse_mode="HTML")
             paused_workouts[user_id]["message_id"] = rest_msg.message_id
 
-            while remaining > 0:
+            while remaining_rest > 0:
                 await asyncio.sleep(1)
                 if paused_workouts[user_id]["stopped"]:
                     await message.answer("⛔ Тренування зупинено.", reply_markup=types.ReplyKeyboardRemove())
@@ -237,24 +238,27 @@ async def start_timer(message: types.Message, state: FSMContext):
                     paused_workouts.pop(user_id, None)
                     return
                 if paused_workouts[user_id]["paused"]:
-                    paused_workouts[user_id]["remaining_rest"] = remaining
+                    paused_workouts[user_id]["remaining_rest"] = remaining_rest
                     continue
-                remaining -= 1
+                remaining_rest -= 1
                 try:
-                    await rest_msg.edit_text(f"⏸️ Відпочинок {remaining} сек")
+                    await rest_msg.edit_text(f"⏸️ Відпочинок {remaining_rest} сек")
                 except TelegramBadRequest:
                     pass
 
+            total_duration += rest_duration
             paused_workouts[user_id]["remaining_rest"] = 0
 
     save_workout_progress(user_id, workout, total_duration)
     achievements = check_achievements(user_id)
     achievement_text = "\n".join([f"🏅 *Досягнення!* {a}" for a in achievements]) if achievements else ""
+
     await message.answer(
         f"✅ Завершено: {total_duration // 60} хв {total_duration % 60} сек\n{achievement_text}",
         reply_markup=types.ReplyKeyboardRemove(),
         parse_mode="Markdown"
     )
+
     await state.clear()
     paused_workouts.pop(user_id, None)
 
