@@ -181,7 +181,7 @@ async def start_timer(message: types.Message, state: FSMContext):
     exercise_duration = data.get("custom_duration", 30)
     rest_duration = data.get("custom_rest", 10)
 
-    exercises = re.findall(r"✅ \d+ сек ([^\n]+)", workout)
+    exercises = re.findall(r"✅ ([^\n]+)", workout)
     total_duration = 0
 
     paused_workouts[user_id] = {

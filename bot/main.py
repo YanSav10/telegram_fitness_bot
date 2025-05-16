@@ -5,11 +5,13 @@ from bot.config import BOT_TOKEN
 from bot.handlers import router
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from bot.handlers import send_reminders
+from bot.commands import set_default_commands
 
 async def main():
     logging.basicConfig(level=logging.INFO)
     bot = Bot(token=BOT_TOKEN)
     dp = Dispatcher()
+    await set_default_commands(bot)
     dp.include_router(router)
 
     # 📆 Запуск щоденного нагадування о 10:00 за Києвом (UTC+3)
