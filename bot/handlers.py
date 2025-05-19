@@ -452,10 +452,21 @@ async def choose_progress_period(message: types.Message):
     await message.answer("🔎 Обери період для перегляду прогресу:", reply_markup=progress_buttons)
 
 @router.message(F.text.in_([
-    "📅 7 днів", "📅 14 днів", "🗓 30 днів",
+    "📅 7 днів", "📅 14 днів", "📅 30 днів",
     "📆 6 місяців", "📅 1 рік", "📖 Увесь час"
 ]))
 async def show_progress_by_period(message: types.Message):
+    from datetime import datetime, timedelta
+
+    def format_time(mins, secs):
+        if mins == 0 and secs == 0:
+            return "—"
+        if mins >= 60:
+            hours, mins = divmod(mins, 60)
+            return f"{hours} год {mins} хв {secs} сек"
+        else:
+            return f"{mins} хв {secs} сек"
+
     user_id = message.from_user.id
     workouts = get_progress(user_id)
     if not workouts:
@@ -467,53 +478,69 @@ async def show_progress_by_period(message: types.Message):
     periods = {
         "📅 7 днів": timedelta(days=7),
         "📅 14 днів": timedelta(days=14),
-        "🗓 30 днів": timedelta(days=30),
+        "📅 30 днів": timedelta(days=30),
         "📆 6 місяців": timedelta(days=182),
         "📅 1 рік": timedelta(days=365),
         "📖 Увесь час": None
     }
 
     cutoff = now - periods[period_text] if periods[period_text] else None
-    filtered = [w for w in workouts if w.get("timestamp") and isinstance(w.get("timestamp"), datetime)
-                and (not cutoff or w["timestamp"].replace(tzinfo=None) >= cutoff)]
+
+    # Фільтрація тренувань у межах періоду
+    filtered = [
+        w for w in workouts
+        if w.get("timestamp") and isinstance(w.get("timestamp"), datetime)
+        and (not cutoff or w["timestamp"].replace(tzinfo=None) >= cutoff)
+    ]
 
     if not filtered:
         await message.answer("ℹ️ За цей період тренувань не було.")
         return
 
-    durations = [w.get("duration", 0) for w in filtered]
+    durations = [w.get("duration", 0) for w in filtered if w.get("duration", 0) > 0]
     total_duration = sum(durations)
     total_workouts = len(durations)
     avg_duration = total_duration // total_workouts if total_workouts else 0
-    min_duration = min(durations)
-    max_duration = max(durations)
+    min_duration = min(durations) if durations else 0
+    max_duration = max(durations) if durations else 0
 
     total_min, total_sec = divmod(total_duration, 60)
     avg_min, avg_sec = divmod(avg_duration, 60)
     min_min, min_sec = divmod(min_duration, 60)
     max_min, max_sec = divmod(max_duration, 60)
 
-    first = filtered[-1].get("timestamp")
-    last = filtered[0].get("timestamp")
+    first = filtered[-1]["timestamp"]
+    last = filtered[0]["timestamp"]
 
-    # Активність
-    if total_workouts >= 10:
+    # Логіка рівня активності (тренувань на день)
+    days_in_period = (last - first).days + 1
+    avg_per_day = total_workouts / days_in_period if days_in_period > 0 else 0
+
+    if avg_per_day >= 1:
         activity = "🔵 Висока"
-    elif total_workouts >= 5:
+    elif avg_per_day >= 0.4:
         activity = "🟡 Середня"
     else:
         activity = "🔴 Низька"
 
+    # Активні дні + %
+    active_days = set(w["timestamp"].date() for w in filtered)
+    period_days = (now.date() - cutoff.date()).days + 1 if cutoff else (now.date() - first.date()).days + 1
+    period_days = max(period_days, 1)
+    active_day_count = len(active_days)
+    active_percent = round((active_day_count / period_days) * 100)
+
     await message.answer(
         f"📊 <b>Прогрес за {period_text}:</b>\n\n"
-        f"🔁 Кількість тренувань: <b>{total_workouts}</b>\n"
-        f"📈 Загальна тривалість: <b>{total_min} хв {total_sec} сек</b>\n"
-        f"⏱ Середня тривалість: <b>{avg_min} хв {avg_sec} сек</b>\n"
-        f"🕒 Найкоротше: <b>{min_min} хв {min_sec} сек</b>\n"
-        f"🕓 Найдовше: <b>{max_min} хв {max_sec} сек</b>\n"
-        f"📅 Перше тренування: <b>{first.strftime('%d.%m.%Y %H:%M')}</b>\n"
-        f"📅 Останнє тренування: <b>{last.strftime('%d.%m.%Y %H:%M')}</b>\n"
-        f"🔥 Рівень активності: <b>{activity}</b>",
+        f"🔁 <b>Кількість тренувань:</b> {total_workouts}\n"
+        f"📅 <b>Днів з тренуваннями:</b> {active_day_count} з {period_days} днів ({active_percent}%)\n"
+        f"⏱️ <b>Загальна тривалість:</b> {format_time(total_min, total_sec)}\n"
+        f"📊 <b>Середня тривалість:</b> {format_time(avg_min, avg_sec)}\n"
+        f"🔸 <b>Найкоротше тренування:</b> {format_time(min_min, min_sec)}\n"
+        f"🔹 <b>Найдовше тренування:</b> {format_time(max_min, max_sec)}\n"
+        f"🗓️ <b>Перше тренування:</b> {first.strftime('%d.%m.%Y %H:%M')}\n"
+        f"📅 <b>Останнє тренування:</b> {last.strftime('%d.%m.%Y %H:%M')}\n"
+        f"🔥 <b>Рівень активності:</b> {activity}",
         parse_mode="HTML",
         reply_markup=types.ReplyKeyboardRemove()
     )
