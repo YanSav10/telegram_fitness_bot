@@ -451,6 +451,7 @@ async def resume_exercise_callback(callback: types.CallbackQuery):
 async def choose_progress_period(message: types.Message):
     await message.answer("🔎 Обери період для перегляду прогресу:", reply_markup=progress_buttons)
 
+
 @router.message(F.text.in_([
     "📅 7 днів", "📅 14 днів", "📅 30 днів",
     "📆 6 місяців", "📅 1 рік", "📖 Увесь час"
@@ -525,7 +526,11 @@ async def show_progress_by_period(message: types.Message):
 
     # Активні дні + %
     active_days = set(w["timestamp"].date() for w in filtered)
-    period_days = (now.date() - cutoff.date()).days + 1 if cutoff else (now.date() - first.date()).days + 1
+    if cutoff:
+        period_days = (last.date() - cutoff.date()).days + 1
+    else:
+        period_days = (last.date() - first.date()).days + 1
+
     period_days = max(period_days, 1)
     active_day_count = len(active_days)
     active_percent = round((active_day_count / period_days) * 100)
