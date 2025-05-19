@@ -515,7 +515,7 @@ async def show_progress_by_period(message: types.Message):
     # Активні дні
     active_days = set(w["timestamp"].date() for w in filtered)
     if cutoff:
-        period_days = (last.date() - cutoff.date()).days + 1
+        period_days = (now.date() - cutoff.date()).days + 1
     else:
         period_days = (last.date() - first.date()).days + 1
 
