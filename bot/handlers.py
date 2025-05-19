@@ -447,10 +447,6 @@ async def resume_exercise_callback(callback: types.CallbackQuery):
     else:
         paused_workouts[user_id]["remaining_rest"] = 0
 
-@router.message(Command("progress"))
-async def choose_progress_period(message: types.Message):
-    await message.answer("🔎 Обери період для перегляду прогресу:", reply_markup=progress_buttons)
-
 @router.message(F.text.in_([
     "📅 7 днів", "📅 14 днів", "🗓 30 днів",
     "📆 6 місяців", "📅 1 рік", "📖 Увесь час"
@@ -474,35 +470,46 @@ async def show_progress_by_period(message: types.Message):
     }
 
     cutoff = now - periods[period_text] if periods[period_text] else None
-    filtered = []
-
-    for w in workouts:
-        ts = w.get("timestamp")
-        if ts and isinstance(ts, datetime):
-            if not cutoff or ts.replace(tzinfo=None) >= cutoff:
-                filtered.append(w)
+    filtered = [w for w in workouts if w.get("timestamp") and isinstance(w.get("timestamp"), datetime)
+                and (not cutoff or w["timestamp"].replace(tzinfo=None) >= cutoff)]
 
     if not filtered:
         await message.answer("ℹ️ За цей період тренувань не було.")
         return
 
-    total_duration = sum(w.get("duration", 0) for w in filtered)
-    total_workouts = len(filtered)
-    avg_duration = total_duration // total_workouts if total_workouts > 0 else 0
+    durations = [w.get("duration", 0) for w in filtered]
+    total_duration = sum(durations)
+    total_workouts = len(durations)
+    avg_duration = total_duration // total_workouts if total_workouts else 0
+    min_duration = min(durations)
+    max_duration = max(durations)
 
     total_min, total_sec = divmod(total_duration, 60)
     avg_min, avg_sec = divmod(avg_duration, 60)
+    min_min, min_sec = divmod(min_duration, 60)
+    max_min, max_sec = divmod(max_duration, 60)
 
     first = filtered[-1].get("timestamp")
     last = filtered[0].get("timestamp")
 
+    # Активність
+    if total_workouts >= 10:
+        activity = "🔵 Висока"
+    elif total_workouts >= 5:
+        activity = "🟡 Середня"
+    else:
+        activity = "🔴 Низька"
+
     await message.answer(
         f"📊 <b>Прогрес за {period_text}:</b>\n\n"
-        f"🔁 Тренувань: <b>{total_workouts}</b>\n"
-        f"⏱ Середня тривалість: <b>{avg_min} хв {avg_sec} сек</b>\n"
+        f"🔁 Кількість тренувань: <b>{total_workouts}</b>\n"
         f"📈 Загальна тривалість: <b>{total_min} хв {total_sec} сек</b>\n"
-        f"🗓 Перше: <b>{first.strftime('%d.%m.%Y %H:%M')}</b>\n"
-        f"🗓 Останнє: <b>{last.strftime('%d.%m.%Y %H:%M')}</b>",
+        f"⏱ Середня тривалість: <b>{avg_min} хв {avg_sec} сек</b>\n"
+        f"🕒 Найкоротше: <b>{min_min} хв {min_sec} сек</b>\n"
+        f"🕓 Найдовше: <b>{max_min} хв {max_sec} сек</b>\n"
+        f"📅 Перше тренування: <b>{first.strftime('%d.%m.%Y %H:%M')}</b>\n"
+        f"📅 Останнє тренування: <b>{last.strftime('%d.%m.%Y %H:%M')}</b>\n"
+        f"🔥 Рівень активності: <b>{activity}</b>",
         parse_mode="HTML",
         reply_markup=types.ReplyKeyboardRemove()
     )
