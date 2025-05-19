@@ -451,7 +451,6 @@ async def resume_exercise_callback(callback: types.CallbackQuery):
 async def choose_progress_period(message: types.Message):
     await message.answer("🔎 Обери період для перегляду прогресу:", reply_markup=progress_buttons)
 
-
 @router.message(F.text.in_([
     "📅 7 днів", "📅 14 днів", "📅 30 днів",
     "📆 6 місяців", "📅 1 рік", "📖 Увесь час"
@@ -513,18 +512,7 @@ async def show_progress_by_period(message: types.Message):
     first = filtered[-1]["timestamp"]
     last = filtered[0]["timestamp"]
 
-    # Логіка рівня активності (тренувань на день)
-    days_in_period = (last - first).days + 1
-    avg_per_day = total_workouts / days_in_period if days_in_period > 0 else 0
-
-    if avg_per_day >= 1:
-        activity = "🔵 Висока"
-    elif avg_per_day >= 0.4:
-        activity = "🟡 Середня"
-    else:
-        activity = "🔴 Низька"
-
-    # Активні дні + %
+    # Активні дні
     active_days = set(w["timestamp"].date() for w in filtered)
     if cutoff:
         period_days = (last.date() - cutoff.date()).days + 1
@@ -534,6 +522,31 @@ async def show_progress_by_period(message: types.Message):
     period_days = max(period_days, 1)
     active_day_count = len(active_days)
     active_percent = round((active_day_count / period_days) * 100)
+
+    active_days_score = len(active_days) / period_days
+    workouts_per_day = total_workouts / period_days
+    workouts_score = min(workouts_per_day, 1.0)
+
+    total_minutes = total_duration / 60
+    total_minutes_score = min(total_minutes / (period_days * 10), 1.0)  # макс ~10 хв/день
+
+    avg_minutes = avg_duration / 60
+    avg_minutes_score = min(avg_minutes / 20, 1.0)  # макс ~20 хв за раз
+
+    # Формула активності
+    score = (
+        0.4 * active_days_score +
+        0.2 * workouts_score +
+        0.2 * total_minutes_score +
+        0.2 * avg_minutes_score
+    )
+
+    if score >= 0.8:
+        activity = "🔵 Висока"
+    elif score >= 0.4:
+        activity = "🟡 Середня"
+    else:
+        activity = "🔴 Низька"
 
     await message.answer(
         f"📊 <b>Прогрес за {period_text}:</b>\n\n"
@@ -545,7 +558,7 @@ async def show_progress_by_period(message: types.Message):
         f"🔹 <b>Найдовше тренування:</b> {format_time(max_min, max_sec)}\n"
         f"🗓️ <b>Перше тренування:</b> {first.strftime('%d.%m.%Y %H:%M')}\n"
         f"📅 <b>Останнє тренування:</b> {last.strftime('%d.%m.%Y %H:%M')}\n"
-        f"🔥 <b>Рівень активності:</b> {activity}",
+        f"🔥 <b>Рівень активності:</b> {activity} ({round(score, 2)})",
         parse_mode="HTML",
         reply_markup=types.ReplyKeyboardRemove()
     )
