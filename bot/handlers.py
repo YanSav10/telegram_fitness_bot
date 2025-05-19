@@ -457,6 +457,7 @@ async def choose_progress_period(message: types.Message):
 ]))
 async def show_progress_by_period(message: types.Message):
     from datetime import datetime, timedelta
+    from collections import Counter
 
     def format_time(mins, secs):
         if mins == 0 and secs == 0:
@@ -486,7 +487,6 @@ async def show_progress_by_period(message: types.Message):
 
     cutoff = now - periods[period_text] if periods[period_text] else None
 
-    # Фільтрація тренувань у межах періоду
     filtered = [
         w for w in workouts
         if w.get("timestamp") and isinstance(w.get("timestamp"), datetime)
@@ -512,29 +512,25 @@ async def show_progress_by_period(message: types.Message):
     first = filtered[-1]["timestamp"]
     last = filtered[0]["timestamp"]
 
-    # Активні дні
-    active_days = set(w["timestamp"].date() for w in filtered)
+    active_days = sorted(set(w["timestamp"].date() for w in filtered))
     if cutoff:
         period_days = (now.date() - cutoff.date()).days
     else:
         period_days = (last.date() - first.date()).days
     period_days = max(period_days, 1)
-
-    period_days = max(period_days, 1)
     active_day_count = len(active_days)
     active_percent = round((active_day_count / period_days) * 100)
 
-    active_days_score = len(active_days) / period_days
+    active_days_score = active_day_count / period_days
     workouts_per_day = total_workouts / period_days
     workouts_score = min(workouts_per_day, 1.0)
 
     total_minutes = total_duration / 60
-    total_minutes_score = min(total_minutes / (period_days * 10), 1.0)  # макс ~10 хв/день
+    total_minutes_score = min(total_minutes / (period_days * 10), 1.0)
 
     avg_minutes = avg_duration / 60
-    avg_minutes_score = min(avg_minutes / 20, 1.0)  # макс ~20 хв за раз
+    avg_minutes_score = min(avg_minutes / 20, 1.0)
 
-    # Формула активності
     score = (
         0.4 * active_days_score +
         0.2 * workouts_score +
@@ -549,6 +545,40 @@ async def show_progress_by_period(message: types.Message):
     else:
         activity = "🔴 Низька"
 
+    # ➕ Додаткова статистика
+    # 1. Найактивніші дні тижня
+    weekday_map = {
+        0: "Пн", 1: "Вт", 2: "Ср", 3: "Чт",
+        4: "Пт", 5: "Сб", 6: "Нд"
+    }
+    weekdays = [w["timestamp"].weekday() for w in filtered]
+    weekday_counts = Counter(weekdays)
+    top_days = ", ".join(weekday_map[d] for d, _ in weekday_counts.most_common(2)) if weekday_counts else "—"
+
+    # 2. Максимальний стрік
+    streak = max_streak = 1
+    for i in range(1, len(active_days)):
+        if (active_days[i] - active_days[i - 1]).days == 1:
+            streak += 1
+            max_streak = max(max_streak, streak)
+        else:
+            streak = 1
+    max_streak = max_streak if active_day_count > 0 else 0
+
+    # 3. Найбільша перерва
+    max_gap = 0
+    for i in range(1, len(active_days)):
+        gap = (active_days[i] - active_days[i - 1]).days - 1
+        if gap > max_gap:
+            max_gap = gap
+
+    # 4. Частка коротких тренувань
+    short_count = sum(1 for d in durations if d <= 5 * 60)
+    short_percent = round((short_count / total_workouts) * 100) if total_workouts else 0
+
+    # 5. Коефіцієнт стабільності
+    stability = round((active_days_score * avg_minutes_score), 2)
+
     await message.answer(
         f"📊 <b>Прогрес за {period_text}:</b>\n\n"
         f"🔁 <b>Кількість тренувань:</b> {total_workouts}\n"
@@ -559,7 +589,12 @@ async def show_progress_by_period(message: types.Message):
         f"🔹 <b>Найдовше тренування:</b> {format_time(max_min, max_sec)}\n"
         f"🗓️ <b>Перше тренування:</b> {first.strftime('%d.%m.%Y %H:%M')}\n"
         f"📅 <b>Останнє тренування:</b> {last.strftime('%d.%m.%Y %H:%M')}\n"
-        f"🔥 <b>Рівень активності:</b> {activity} ({round(score, 2)})",
+        f"🔥 <b>Рівень активності:</b> {activity} ({round(score, 2)})\n\n"
+        f"📆 <b>Найактивніші дні:</b> {top_days}\n"
+        f"🔁 <b>Макс. стрік:</b> {max_streak} днів поспіль\n"
+        f"⛔ <b>Макс. перерва:</b> {max_gap} днів без тренувань\n"
+        f"🤏 <b>Короткі тренування:</b> {short_percent}%\n"
+        f"📈 <b>Коефіцієнт стабільності:</b> {stability}",
         parse_mode="HTML",
         reply_markup=types.ReplyKeyboardRemove()
     )
