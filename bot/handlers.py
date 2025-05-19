@@ -541,7 +541,7 @@ async def show_progress_by_period(message: types.Message):
         0.2 * avg_minutes_score
     )
 
-    if score >= 0.8:
+    if score >= 0.75:
         activity = "🔵 Висока"
     elif score >= 0.4:
         activity = "🟡 Середня"
