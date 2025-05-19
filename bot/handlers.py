@@ -521,6 +521,7 @@ async def show_progress_by_period(message: types.Message):
     active_day_count = len(active_days)
     active_percent = round((active_day_count / period_days) * 100)
 
+    # 🔥 Рівень активності
     active_days_score = active_day_count / period_days
     workouts_per_day = total_workouts / period_days
     workouts_score = min(workouts_per_day, 1.0)
@@ -529,13 +530,13 @@ async def show_progress_by_period(message: types.Message):
     total_minutes_score = min(total_minutes / (period_days * 10), 1.0)
 
     avg_minutes = avg_duration / 60
-    avg_minutes_score = min(avg_minutes / 20, 1.0)
+    avg_minutes_score_for_activity = min(avg_minutes / 20, 1.0)
 
     score = (
         0.4 * active_days_score +
         0.2 * workouts_score +
         0.2 * total_minutes_score +
-        0.2 * avg_minutes_score
+        0.2 * avg_minutes_score_for_activity
     )
 
     if score >= 0.75:
@@ -545,17 +546,26 @@ async def show_progress_by_period(message: types.Message):
     else:
         activity = "🔴 Низька"
 
-    # ➕ Додаткова статистика
-    # 1. Найактивніші дні тижня
+    # 📈 Коефіцієнт стабільності
+    avg_minutes_per_active_day = total_minutes / active_day_count if active_day_count else 0
+    avg_minutes_score = min(avg_minutes_per_active_day / 20, 1.0)
+    stability = round(active_days_score * avg_minutes_score, 2)
+
+    if stability >= 0.7:
+        stability_level = "🔵 Висока"
+    elif stability >= 0.4:
+        stability_level = "🟡 Середня"
+    else:
+        stability_level = "🔴 Низька"
+
+    # ➕ Додаткова аналітика
     weekday_map = {
-        0: "Пн", 1: "Вт", 2: "Ср", 3: "Чт",
-        4: "Пт", 5: "Сб", 6: "Нд"
+        0: "Пн", 1: "Вт", 2: "Ср", 3: "Чт", 4: "Пт", 5: "Сб", 6: "Нд"
     }
     weekdays = [w["timestamp"].weekday() for w in filtered]
     weekday_counts = Counter(weekdays)
     top_days = ", ".join(weekday_map[d] for d, _ in weekday_counts.most_common(2)) if weekday_counts else "—"
 
-    # 2. Максимальний стрік
     streak = max_streak = 1
     for i in range(1, len(active_days)):
         if (active_days[i] - active_days[i - 1]).days == 1:
@@ -565,19 +575,14 @@ async def show_progress_by_period(message: types.Message):
             streak = 1
     max_streak = max_streak if active_day_count > 0 else 0
 
-    # 3. Найбільша перерва
     max_gap = 0
     for i in range(1, len(active_days)):
         gap = (active_days[i] - active_days[i - 1]).days - 1
         if gap > max_gap:
             max_gap = gap
 
-    # 4. Частка коротких тренувань
     short_count = sum(1 for d in durations if d <= 5 * 60)
     short_percent = round((short_count / total_workouts) * 100) if total_workouts else 0
-
-    # 5. Коефіцієнт стабільності
-    stability = round((active_days_score * avg_minutes_score), 2)
 
     await message.answer(
         f"📊 <b>Прогрес за {period_text}:</b>\n\n"
@@ -594,7 +599,7 @@ async def show_progress_by_period(message: types.Message):
         f"🔁 <b>Макс. стрік:</b> {max_streak} днів поспіль\n"
         f"⛔ <b>Макс. перерва:</b> {max_gap} днів без тренувань\n"
         f"🤏 <b>Короткі тренування:</b> {short_percent}%\n"
-        f"📈 <b>Коефіцієнт стабільності:</b> {stability}",
+        f"📈 <b>Коефіцієнт стабільності:</b> {stability} ({stability_level})",
         parse_mode="HTML",
         reply_markup=types.ReplyKeyboardRemove()
     )
