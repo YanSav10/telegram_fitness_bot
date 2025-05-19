@@ -447,6 +447,10 @@ async def resume_exercise_callback(callback: types.CallbackQuery):
     else:
         paused_workouts[user_id]["remaining_rest"] = 0
 
+@router.message(Command("progress"))
+async def choose_progress_period(message: types.Message):
+    await message.answer("🔎 Обери період для перегляду прогресу:", reply_markup=progress_buttons)
+
 @router.message(F.text.in_([
     "📅 7 днів", "📅 14 днів", "🗓 30 днів",
     "📆 6 місяців", "📅 1 рік", "📖 Увесь час"
