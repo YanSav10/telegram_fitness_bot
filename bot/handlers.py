@@ -11,7 +11,7 @@ from bot.services import (
     get_user, check_achievements,
     get_all_users, get_progress
 )
-from bot.buttons import goal_buttons, control_buttons, resume_buttons
+from bot.buttons import goal_buttons, control_buttons, resume_buttons, progress_buttons
 from bot.workouts import workout_plans
 from bot.video_links import video_links
 from aiogram.exceptions import TelegramBadRequest
@@ -447,19 +447,65 @@ async def resume_exercise_callback(callback: types.CallbackQuery):
     else:
         paused_workouts[user_id]["remaining_rest"] = 0
 
-@router.message(F.text == "📊 Прогрес")
-async def view_progress(message: types.Message):
-    workouts = get_progress(message.from_user.id)
-    if workouts:
-        response = "📜 *Історія тренувань:*\n\n"
-        for w in workouts:
-            timestamp = w.get("timestamp")
-            duration = w.get("duration", 0)
-            date_str = timestamp.strftime("%d.%m.%Y %H:%M") if timestamp else "невідомо"
-            response += f"• {date_str} — {duration // 60} хв {duration % 60} сек\n"
-        await message.answer(response, parse_mode="Markdown")
-    else:
-        await message.answer("🔕 У вас ще немає завершених тренувань.")
+@router.message(Command("progress"))
+async def choose_progress_period(message: types.Message):
+    await message.answer("🔎 Обери період для перегляду прогресу:", reply_markup=progress_buttons)
+
+@router.message(F.text.in_([
+    "📅 7 днів", "📅 14 днів", "🗓 30 днів",
+    "📆 6 місяців", "📅 1 рік", "📖 Увесь час"
+]))
+async def show_progress_by_period(message: types.Message):
+    user_id = message.from_user.id
+    workouts = get_progress(user_id)
+    if not workouts:
+        await message.answer("❌ У вас ще немає завершених тренувань.")
+        return
+
+    now = datetime.now()
+    period_text = message.text
+    periods = {
+        "📅 7 днів": timedelta(days=7),
+        "📅 14 днів": timedelta(days=14),
+        "🗓 30 днів": timedelta(days=30),
+        "📆 6 місяців": timedelta(days=182),
+        "📅 1 рік": timedelta(days=365),
+        "📖 Увесь час": None
+    }
+
+    cutoff = now - periods[period_text] if periods[period_text] else None
+    filtered = []
+
+    for w in workouts:
+        ts = w.get("timestamp")
+        if ts and isinstance(ts, datetime):
+            if not cutoff or ts.replace(tzinfo=None) >= cutoff:
+                filtered.append(w)
+
+    if not filtered:
+        await message.answer("ℹ️ За цей період тренувань не було.")
+        return
+
+    total_duration = sum(w.get("duration", 0) for w in filtered)
+    total_workouts = len(filtered)
+    avg_duration = total_duration // total_workouts if total_workouts > 0 else 0
+
+    total_min, total_sec = divmod(total_duration, 60)
+    avg_min, avg_sec = divmod(avg_duration, 60)
+
+    first = filtered[-1].get("timestamp")
+    last = filtered[0].get("timestamp")
+
+    await message.answer(
+        f"📊 <b>Прогрес за {period_text}:</b>\n\n"
+        f"🔁 Тренувань: <b>{total_workouts}</b>\n"
+        f"⏱ Середня тривалість: <b>{avg_min} хв {avg_sec} сек</b>\n"
+        f"📈 Загальна тривалість: <b>{total_min} хв {total_sec} сек</b>\n"
+        f"🗓 Перше: <b>{first.strftime('%d.%m.%Y %H:%M')}</b>\n"
+        f"🗓 Останнє: <b>{last.strftime('%d.%m.%Y %H:%M')}</b>",
+        parse_mode="HTML",
+        reply_markup=types.ReplyKeyboardRemove()
+    )
 
 async def send_reminders(bot: Bot):
     users = get_all_users()
