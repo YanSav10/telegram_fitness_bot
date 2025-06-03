@@ -15,6 +15,7 @@ from bot.buttons import goal_buttons, control_buttons, resume_buttons, progress_
 from bot.workouts import workout_plans
 from bot.video_links import video_links
 from aiogram.exceptions import TelegramBadRequest
+from aiogram.exceptions import TelegramForbiddenError
 
 router = Router()
 
@@ -644,18 +645,26 @@ async def send_reminders(bot: Bot):
     users = get_all_users()
     for user in users:
         user_id = user["user_id"]
-        workouts = get_progress(user_id)
+        try:
+            workouts = get_progress(user_id)
 
-        if not workouts:
-            await bot.send_message(user_id, "👋 Ви ще не почали тренування. Введіть /workout, щоб розпочати!")
-            continue
-
-        last = workouts[0].get("timestamp")
-        if last:
-            last_dt = last.replace(tzinfo=timezone.utc)
-            now = datetime.now(timezone.utc)
-            if now - last_dt > timedelta(hours=24):
+            if not workouts:
                 await bot.send_message(
                     user_id,
-                    "📢 Нагадування: ви не тренувалися понад 24 години. Пора повертатись у форму! 💪"
+                    "👋 Ви ще не почали тренування. Введіть /workout, щоб розпочати!"
                 )
+                continue
+
+            last = workouts[0].get("timestamp")
+            if last:
+                last_dt = last.replace(tzinfo=timezone.utc)
+                now = datetime.now(timezone.utc)
+                if now - last_dt > timedelta(hours=24):
+                    await bot.send_message(
+                        user_id,
+                        "📢 Нагадування: ви не тренувалися понад 24 години. Пора повертатись у форму! 💪"
+                    )
+        except TelegramForbiddenError:
+            print(f"⛔ Бот заблоковано користувачем {user_id}, пропускаємо...")
+        except Exception as e:
+            print(f"⚠️ Помилка при надсиланні нагадування користувачу {user_id}: {e}")
